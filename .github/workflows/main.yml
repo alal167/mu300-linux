@@ -1,0 +1,51 @@
+name: Build mu300-linux
+
+on:
+   workflow_dispatch: # 允许在 Actions 页面手动点击触发
+   push:
+    branches:
+      - clean-tf-7.2
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 1. 检出源码 (Checkout)
+        uses: actions/checkout@v4
+        with:
+          ref: clean-tf-7.2
+          submodules: recursive
+
+      - name: 2. 清理云主机空间 (防止内核编译空间不足)
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          df -h
+
+      - name: 3. 安装交叉编译依赖环境
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev \
+            libelf-dev bc cpio kmod git wget python3 gcc-aarch64-linux-gnu
+
+      - name: 4. 执行编译
+        run: |
+          # 如果仓库根目录有现成的编译脚本（如 build.sh），请取消下一行的注释并修改脚本名：
+          # chmod +x ./build.sh && ./build.sh
+          
+          # 如果是标准 Linux 内核源码，请将下方 defconfig 替换为 arch/arm64/configs/ 下的实际配置文件名：
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          make defconfig
+          make -j$(nproc)
+
+      - name: 5. 上传编译产物 (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mu300-linux-build
+          path: |
+            arch/arm64/boot/Image*
+            arch/arm64/boot/dts/**/*.dtb
+            *.img
+          if-no-files-found: ignore
