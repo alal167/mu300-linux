@@ -1,0 +1,49 @@
+name: Build Kernel
+
+on:
+  workflow_dispatch: # 允许在 GitHub 网页上手动点击运行
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          ref: clean-tf-7.2
+
+      - name: 安装依赖与交叉编译工具链
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential libncurses-dev bison flex \
+            libssl-dev libelf-dev bc u-boot-tools git ccache rsync \
+            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: 配置与编译
+        run: |
+          # 默认架构根据项目设置（若为 32位 arm 则为 arm，若是 64位 则为 arm64）
+          export ARCH=arm
+          export CROSS_COMPILE=arm-linux-gnueabihf-
+
+          # 列出板级配置供排查日志参考
+          ls -la arch/$ARCH/configs/
+
+          # 如果项目有对应的 defconfig，请替换下面的名称（例如 mu300_defconfig）
+          # make mu300_defconfig
+          
+          # 编译内核与设备树
+          make -j$(nproc) zImage dtbs modules
+
+          # 打包输出产物
+          mkdir -p output
+          cp arch/$ARCH/boot/zImage output/ 2>/dev/null || true
+          cp arch/$ARCH/boot/dts/*.dtb output/ 2>/dev/null || true
+          make modules_install INSTALL_MOD_PATH=./output/modules
+
+      - name: 上传构建产物 (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mu300-kernel-artifacts
+          path: output/
